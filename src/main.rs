@@ -4,7 +4,7 @@ use crate::server::start_server;
 use log::info;
 use std::env;
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 use teloxide::dispatching::dialogue::InMemStorage;
 use teloxide::{
     dispatching::{dialogue, UpdateHandler},
@@ -39,7 +39,24 @@ pub struct HeatingState {
     pub target_temp: f64,
     pub current_temp: f64,
     pub current_temp_reported_at: SystemTime,
-    pub heating_is_on: bool,
+    pub heating_switch_is_on: bool,
+}
+
+impl HeatingState {
+    pub fn heating_is_on(&self) -> bool {
+        if SystemTime::now()
+            .duration_since(self.current_temp_reported_at)
+            .unwrap()
+            > Duration::from_secs(15 * 60)
+        {
+            return false;
+        }
+
+        match self.heating_switch_is_on && self.current_temp < self.target_temp {
+            true => true,
+            false => false,
+        }
+    }
 }
 
 #[tokio::main]
@@ -61,7 +78,7 @@ async fn main() {
         target_temp: 21.0,
         current_temp: 0.0,
         current_temp_reported_at: SystemTime::now(),
-        heating_is_on: false,
+        heating_switch_is_on: false,
     }));
 
     tokio::spawn(start_server(webhook_port, heating_state.clone()));
@@ -126,7 +143,11 @@ async fn invalid_state(bot: Bot, msg: Message) -> HandlerResult {
 async fn status(bot: Bot, msg: Message, heating_state: Arc<Mutex<HeatingState>>) -> HandlerResult {
     let state = heating_state.lock().await;
 
-    let on_off = match state.heating_is_on {
+    let switch_on_off = match state.heating_switch_is_on {
+        true => "ON",
+        false => "OFF",
+    };
+    let heating_on_off = match state.heating_is_on() {
         true => "ON",
         false => "OFF",
     };
@@ -136,9 +157,10 @@ async fn status(bot: Bot, msg: Message, heating_state: Arc<Mutex<HeatingState>>)
         format!(
             "\
         Current status: \n\
-         * Heating is {on_off}\n\
+         * Switch is {switch_on_off}\n\
          * Target temperature is {}\n\
-         * Current temperature is {} ({} secs ago)",
+         * Current temperature is {} ({} secs ago)\n\
+         Meaning heating is currently: {heating_on_off}",
             state.target_temp,
             state.current_temp,
             temp_report_delay.as_secs(),
@@ -204,7 +226,7 @@ async fn set_heating_on(
     msg: Message,
     heating_state: Arc<Mutex<HeatingState>>,
 ) -> HandlerResult {
-    heating_state.lock().await.heating_is_on = true;
+    heating_state.lock().await.heating_switch_is_on = true;
 
     bot.send_message(msg.chat.id, "Heating set to ON").await?;
     Ok(())
@@ -215,7 +237,7 @@ async fn set_heating_off(
     msg: Message,
     heating_state: Arc<Mutex<HeatingState>>,
 ) -> HandlerResult {
-    heating_state.lock().await.heating_is_on = false;
+    heating_state.lock().await.heating_switch_is_on = false;
 
     bot.send_message(msg.chat.id, "Heating set to OFF").await?;
     Ok(())
