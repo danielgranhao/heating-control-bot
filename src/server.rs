@@ -4,6 +4,7 @@ use axum::routing::{get, post};
 use axum::Router;
 use log::info;
 use std::sync::Arc;
+use std::time::{Duration, SystemTime};
 use tokio::sync::Mutex;
 
 pub const HEATING_IS_ON_ROUTE: &str = "/heating_is_on";
@@ -25,6 +26,14 @@ pub async fn start_server(port: String, heating_state: Arc<Mutex<HeatingState>>)
 async fn heating_is_on(State(heating_state): State<Arc<Mutex<HeatingState>>>) -> String {
     let heating_state = heating_state.lock().await;
 
+    if SystemTime::now()
+        .duration_since(heating_state.current_temp_reported_at)
+        .unwrap()
+        > Duration::from_secs(15 * 60)
+    {
+        return "false".into();
+    }
+
     match heating_state.heating_is_on && heating_state.current_temp < heating_state.target_temp {
         true => "true".into(),
         false => "false".into(),
@@ -35,5 +44,7 @@ async fn receive_temp(
     State(heating_state): State<Arc<Mutex<HeatingState>>>,
     Path(temp): Path<f64>,
 ) {
-    heating_state.lock().await.current_temp = temp;
+    let mut heating_state = heating_state.lock().await;
+    heating_state.current_temp = temp;
+    heating_state.current_temp_reported_at = SystemTime::now();
 }

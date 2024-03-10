@@ -4,6 +4,7 @@ use crate::server::start_server;
 use log::info;
 use std::env;
 use std::sync::Arc;
+use std::time::SystemTime;
 use teloxide::dispatching::dialogue::InMemStorage;
 use teloxide::{
     dispatching::{dialogue, UpdateHandler},
@@ -37,6 +38,7 @@ enum Command {
 pub struct HeatingState {
     pub target_temp: f64,
     pub current_temp: f64,
+    pub current_temp_reported_at: SystemTime,
     pub heating_is_on: bool,
 }
 
@@ -58,6 +60,7 @@ async fn main() {
     let heating_state = Arc::new(Mutex::new(HeatingState {
         target_temp: 21.0,
         current_temp: 0.0,
+        current_temp_reported_at: SystemTime::now(),
         heating_is_on: false,
     }));
 
@@ -127,15 +130,18 @@ async fn status(bot: Bot, msg: Message, heating_state: Arc<Mutex<HeatingState>>)
         true => "ON",
         false => "OFF",
     };
+    let temp_report_delay = SystemTime::now().duration_since(state.current_temp_reported_at)?;
     bot.send_message(
         msg.chat.id,
         format!(
             "\
         Current status: \n\
-         * Heating is {on_off} \n\
-         * Target temperature is {} \n\
-         * Current temperature is {}",
-            state.target_temp, state.current_temp,
+         * Heating is {on_off}\n\
+         * Target temperature is {}\n\
+         * Current temperature is {} ({} secs ago)",
+            state.target_temp,
+            state.current_temp,
+            temp_report_delay.as_secs(),
         ),
     )
     .await?;
