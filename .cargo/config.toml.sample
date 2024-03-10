@@ -1,0 +1,8 @@
+[env]
+RUST_LOG = ""
+
+TELOXIDE_TOKEN = ""
+
+PORT = ""
+
+AUTHORIZED_USER_IDS = ""
