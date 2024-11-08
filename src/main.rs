@@ -1,7 +1,7 @@
 mod server;
 
 use crate::server::start_server;
-use log::info;
+use log::{error, info};
 use std::env;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
@@ -247,6 +247,10 @@ async fn check_valid_user(bot: Bot, msg: Message, authorized_users: Vec<i64>) ->
     match authorized_users.contains(&msg.chat.id.0) {
         true => true,
         false => {
+            error!(
+                "Unauthorized user tried to send message: {}",
+                &msg.chat.id.0
+            );
             let _ = bot.send_message(msg.chat.id, "Unauthorized user").await;
             false
         }
